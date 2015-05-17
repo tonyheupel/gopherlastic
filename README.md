@@ -1,4 +1,4 @@
-# golastic
+# gopherlastic
 
 A minimal Elasticsearch client
 
