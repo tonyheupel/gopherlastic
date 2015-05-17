@@ -16,7 +16,7 @@ import (
 )
 
 type Something struct {
-        SomeValue string `json:"someValue"`
+        SomeValue  string `json:"someValue"`
         OtherThing string `json:"otherThing"`
 }
 
