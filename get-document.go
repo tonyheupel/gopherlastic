@@ -8,9 +8,9 @@ import (
 )
 
 type GetDocumentRequest struct {
-	Index string
-	Type  string
-	Id    string
+	Index string `json:"_index"`
+	Type  string `json:"_type"`
+	Id    string `json:"_id"`
 }
 
 type GetDocumentResponse struct {
