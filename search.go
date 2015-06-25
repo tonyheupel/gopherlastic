@@ -5,7 +5,9 @@ package gopherlastic
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -41,9 +43,9 @@ type SearchResults struct {
 	Hits     Hits   `json:"hits"`
 }
 
-// SearchRequest represents a simplified representation of a keyword-based query
+// SimpleSearchRequest represents a simplified representation of a keyword-based query
 // structure that can be passed to Elasticsearch.
-type SearchRequest struct {
+type SimpleSearchRequest struct {
 	Skip     int64
 	Count    int64
 	Keywords string
@@ -51,9 +53,9 @@ type SearchRequest struct {
 	Type     string
 }
 
-// NewSearchRequest creates a new SearchRequest object based on the information passed in.
-func NewSearchRequest(index string, docType string, keywords string, skip int64, count int64) *SearchRequest {
-	return &SearchRequest{
+// NewSimpleSearchRequest creates a new SimpleSearchRequest object based on the information passed in.
+func NewSimpleSearchRequest(index string, docType string, keywords string, skip int64, count int64) *SimpleSearchRequest {
+	return &SimpleSearchRequest{
 		Index:    index,
 		Type:     docType,
 		Keywords: keywords,
@@ -62,10 +64,26 @@ func NewSearchRequest(index string, docType string, keywords string, skip int64,
 	}
 }
 
-// Search performs a simple search against Elasticsearch.
+// SearchRequest is the type for generic JSON-based search requests to elasticsearch
+type SearchRequest struct {
+	Index string
+	Type  string
+	Body  string
+}
+
+// NewSearchRequest creates a new SearchRequest object based on the information passed in.
+func NewSearchRequest(index string, docType string, body string) *SearchRequest {
+	return &SearchRequest{
+		Index: index,
+		Type:  docType,
+		Body:  body,
+	}
+}
+
+// SimpleSearch performs a simple search against Elasticsearch.
 // If keywords are provided, it matches all fields on the index using an "or" operator.
 // If no keywords are provided, it returns all documents for the passed in index and type.
-func Search(endpoint string, req *SearchRequest) (*SearchResults, error) {
+func (c *Client) SimpleSearch(req *SimpleSearchRequest) (*SearchResults, error) {
 	// Search Using Raw json String if there are keywords passed in, otherwise do query.match_all = {}
 	var countJson string
 	if req.Count > 0 {
@@ -81,7 +99,7 @@ func Search(endpoint string, req *SearchRequest) (*SearchResults, error) {
 
 	searchJson := fmt.Sprintf("{ from: %d%s, %s }", req.Skip, countJson, matchClause)
 
-	url := fmt.Sprintf("http://%s/%s/%s/_search", endpoint, req.Index, req.Type)
+	url := fmt.Sprintf("http://%s/%s/%s/_search", c.Host, req.Index, req.Type)
 
 	resp, err := http.Post(url, "application/json", strings.NewReader(searchJson))
 	if err != nil {
@@ -95,4 +113,55 @@ func Search(endpoint string, req *SearchRequest) (*SearchResults, error) {
 	}
 
 	return &results, err
+}
+
+func (c *Client) Search(searchRequest *SearchRequest) (*SearchResults, error) {
+	req, err := c.buildSearchRequest(searchRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	httpClient := &http.Client{}
+	res, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	defer res.Body.Close()
+	resBody, err := ioutil.ReadAll(res.Body)
+
+	var searchResults SearchResults
+	err = json.Unmarshal(resBody, &searchResults)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &searchResults, nil
+}
+
+func (c *Client) buildSearchRequest(req *SearchRequest) (*http.Request, error) {
+	// Since we support using URL as the ID, we need to use Opaque URL
+	// so the http library doesn't un-encode the url-as-id;
+	// therefore, we need to create our own request by hand
+	return &http.Request{
+		Method: "POST",
+		Host:   c.Host, // takes precendence over URL.Host
+		URL: &url.URL{
+			Host:   c.Host, //ignored
+			Scheme: "http",
+			Opaque: buildSearchByIndexAndTypePath(req.Index, req.Type),
+		},
+		Body: ioutil.NopCloser(strings.NewReader(req.Body)),
+	}, nil
+}
+
+func buildSearchByIndexAndTypePath(index string, docType string) string {
+	var topicPart string
+
+	if docType != "" {
+		topicPart = docType + "/"
+	}
+
+	return fmt.Sprintf("%s/%s_search", index, topicPart)
 }
