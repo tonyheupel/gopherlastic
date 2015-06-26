@@ -4,6 +4,7 @@ package gopherlastic
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -41,6 +42,7 @@ type SearchResults struct {
 	TimedOut bool   `json:"timed_out"`
 	Shards   Shards `json:"_shards"`
 	Hits     Hits   `json:"hits"`
+	Error    string `json:"error,omitempty"`
 }
 
 // SimpleSearchRequest represents a simplified representation of a keyword-based query
@@ -120,7 +122,8 @@ func (c *Client) Search(searchRequest *SearchRequest) (*SearchResults, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	req.Body = nil
+	req.ContentLength = 0
 	httpClient := &http.Client{}
 	res, err := httpClient.Do(req)
 	if err != nil {
@@ -137,6 +140,10 @@ func (c *Client) Search(searchRequest *SearchRequest) (*SearchResults, error) {
 		return nil, err
 	}
 
+	if searchResults.Error != "" {
+		return nil, errors.New(searchResults.Error)
+	}
+
 	return &searchResults, nil
 }
 
@@ -144,24 +151,27 @@ func (c *Client) buildSearchRequest(req *SearchRequest) (*http.Request, error) {
 	// Since we support using URL as the ID, we need to use Opaque URL
 	// so the http library doesn't un-encode the url-as-id;
 	// therefore, we need to create our own request by hand
-	return &http.Request{
+	httpReq := &http.Request{
 		Method: "POST",
 		Host:   c.Host, // takes precendence over URL.Host
 		URL: &url.URL{
 			Host:   c.Host, //ignored
 			Scheme: "http",
-			Opaque: buildSearchByIndexAndTypePath(req.Index, req.Type),
+			Opaque: buildSearchByIndexAndTypePath(c.Host, req.Index, req.Type),
 		},
-		Body: ioutil.NopCloser(strings.NewReader(req.Body)),
-	}, nil
+		Body:          ioutil.NopCloser(strings.NewReader(req.Body)),
+		ContentLength: int64(len(req.Body)),
+	}
+
+	return httpReq, nil
 }
 
-func buildSearchByIndexAndTypePath(index string, docType string) string {
+func buildSearchByIndexAndTypePath(host string, index string, docType string) string {
 	var topicPart string
 
 	if docType != "" {
 		topicPart = docType + "/"
 	}
 
-	return fmt.Sprintf("%s/%s_search", index, topicPart)
+	return fmt.Sprintf("//%s/%s/%s_search", host, index, topicPart)
 }
