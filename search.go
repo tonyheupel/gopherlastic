@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"strings"
 )
 
@@ -133,6 +132,10 @@ func (c *Client) Search(searchRequest *SearchRequest) (*SearchResults, error) {
 	defer res.Body.Close()
 	resBody, err := ioutil.ReadAll(res.Body)
 
+	if err != nil || (res.StatusCode >= 400 && res.StatusCode <= 599) {
+		return nil, errors.New(string(resBody))
+	}
+
 	var searchResults SearchResults
 	err = json.Unmarshal(resBody, &searchResults)
 
@@ -151,18 +154,12 @@ func (c *Client) buildSearchRequest(req *SearchRequest) (*http.Request, error) {
 	// Since we support using URL as the ID, we need to use Opaque URL
 	// so the http library doesn't un-encode the url-as-id;
 	// therefore, we need to create our own request by hand
-	httpReq := &http.Request{
-		Method: "POST",
-		Host:   c.Host, // takes precendence over URL.Host
-		URL: &url.URL{
-			Host:   c.Host, //ignored
-			Scheme: "http",
-			Opaque: buildSearchByIndexAndTypePath(c.Host, req.Index, req.Type),
-		},
-		Body:          ioutil.NopCloser(strings.NewReader(req.Body)),
-		ContentLength: int64(len(req.Body)),
+	httpReq, err := http.NewRequest("POST",
+		"http:"+buildSearchByIndexAndTypePath(c.Host, req.Index, req.Type),
+		ioutil.NopCloser(strings.NewReader(req.Body)))
+	if err != nil {
+		return nil, err
 	}
-
 	return httpReq, nil
 }
 
