@@ -13,10 +13,11 @@ import (
 
 // A Hit represents a single search result.
 type Hit struct {
-	Id     string      `json:"_id"`
-	Index  string      `json:"_index"`
-	Score  float64     `json:"_score"`
-	Source interface{} `json:"_source"`
+	Id     string                   `json:"_id"`
+	Index  string                   `json:"_index"`
+	Score  float64                  `json:"_score"`
+	Source interface{}              `json:"_source"`
+	Fields map[string][]interface{} `json:"fields"`
 }
 
 // Hits represents the summary of all search result hits.
@@ -121,8 +122,7 @@ func (c *Client) Search(searchRequest *SearchRequest) (*SearchResults, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Body = nil
-	req.ContentLength = 0
+
 	httpClient := &http.Client{}
 	res, err := httpClient.Do(req)
 	if err != nil {
