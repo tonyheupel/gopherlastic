@@ -16,7 +16,8 @@ type Hit struct {
 	Id     string                   `json:"_id"`
 	Index  string                   `json:"_index"`
 	Score  float64                  `json:"_score"`
-	Source interface{}              `json:"_source"`
+	Source map[string]interface{}   `json:"_source"`
+	Type   string                   `json:"_type"`
 	Fields map[string][]interface{} `json:"fields"`
 }
 
